@@ -30,14 +30,37 @@ separators=["\n\n", "\n", ". ", " ", ""].
 **Cons:** Not perfect at tables/code (PDF is prose, fine).
 **Status:** Accepted.
 
-## ADR-003: OpenAI text-embedding-3-small + GPT-4o-mini
-**Context:** Need embeddings + generation; provider abstraction required (ADR-016).
-**Decision:** `text-embedding-3-small` (1536d) + `gpt-4o-mini`.
-**Alternatives:** -large embedding (5× cost, marginal gain), GPT-4o (overkill),
-local embeddings (slower cold start, lower quality).
-**Pros:** Cheap, fast, high quality, stable API.
-**Cons:** Network dependency; data leaves machine (acceptable — non-sensitive demo).
-**Status:** Accepted.
+## ADR-003: Provider selection — Ollama primary, OpenAI alternative
+**Context:** Need embeddings + generation. Original draft assumed OpenAI
+only, but we want the default to run with zero API keys during development.
+The provider abstraction (ADR-016) was designed for exactly this swap.
+
+**Decision:**
+- **Default:** Ollama, local.
+  - LLM: `llama3.2`
+  - Embeddings: `nomic-embed-text` (768d)
+- **Alternative:** OpenAI, available by changing one env var.
+  - LLM: `gpt-4o-mini`
+  - Embeddings: `text-embedding-3-small` (1536d)
+  - Kept implemented so the abstraction is demonstrably real (ADR-022).
+
+**Alternatives considered:**
+- OpenAI-only (rejected: needs key, costs money, network dependency)
+- Local sentence-transformers embeddings + separate local LLM
+  (rejected: Ollama wraps both behind one consistent interface)
+- vLLM / llama.cpp direct (rejected: Ollama is batteries-included)
+
+**Pros (Ollama):** No key, offline-capable, private, free, deterministic
+at `temperature=0`, easy to demo, single-tool lifecycle for both LLM and
+embeddings.
+
+**Cons (Ollama):** Slower on cold start; requires Ollama installed and
+models pulled (~2–5GB); `nomic-embed-text` is 768d — different from
+OpenAI's 1536d, which changes the Chroma collection dimensionality. This
+is handled by config (`EMBEDDING_DIM`), not code, but must be set
+consistently across ingestion and retrieval.
+
+**Status:** Accepted. Supersedes the earlier OpenAI-only framing of ADR-003.
 
 ## ADR-004: Hybrid (dense + BM25) over dense-only
 **Context:** Dense misses exact terms (names, IDs, rare tokens); BM25 misses paraphrases.
@@ -194,3 +217,39 @@ Pydantic schemas. Mitigated by: backend is the source of truth,
 `shared/schemas/` is the documented contract, runtime validation can be
 added later if drift becomes real.
 **Status:** Accepted (user constraint).
+
+## ADR-021: Auto-select log format by environment
+**Context:** Local dev wants readable colorized logs; CI/prod want
+machine-parseable JSON for aggregators (Loki, Datadog, CloudWatch).
+**Decision:** `configure_logging()` picks the renderer from
+`settings.environment` (`local` → ConsoleRenderer, `ci`/`prod` →
+JSONRenderer). `LOG_JSON` env var overrides if set.
+**Alternatives:** Manual flag (drift, easy to forget in one service);
+always JSON (painful in dev); always pretty (useless in prod).
+**Pros:** Correct by default; one override if needed; no per-service config.
+**Cons:** Log shape differs between environments — documented inline in
+`logging/setup.py` so no one is surprised.
+**Status:** Accepted.
+
+## ADR-022: Keep OpenAI provider alongside Ollama
+**Context:** Ollama is now the default. Should we delete
+`openai_provider.py` and drop the `openai` dependency?
+
+**Decision:** No. Keep both. `EMBEDDING_PROVIDER` and `LLM_PROVIDER` env
+vars select at runtime. Both providers are first-class.
+
+**Alternatives:** Delete the OpenAI provider (simpler codebase, fewer deps).
+
+**Pros (keep both):**
+- The provider abstraction (ADR-016) is *demonstrably* real — a reviewer
+  can flip an env var and watch the pipeline run against a different
+  backend. A README claim alone is resume-driven; two working providers
+  is proof.
+- Fallback if Ollama isn't installed on a reviewer's machine.
+- Lets us use OpenAI's stronger judge later for RAGAS evaluation without
+  paying for the whole pipeline.
+
+**Cons:** Two code paths to maintain; `openai` remains a dependency of
+`shared/` even when unused.
+
+**Status:** Accepted.

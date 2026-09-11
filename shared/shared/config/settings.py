@@ -87,17 +87,30 @@ class Settings(BaseSettings):
     retrieval_hybrid: bool = True      # ablation: use dense + sparse + RRF
     retrieval_rerank: bool = True      # ablation: run cross-encoder
 
-    # ── Providers (ADR-016) ──────────────────────────────────
-    embedding_provider: Literal["openai"] = "openai"
-    embedding_model: str = "text-embedding-3-small"
-    embedding_dim: int = 1536
+    # ── Providers (ADR-016, ADR-022) ─────────────────────────
+    # Ollama is default (zero API key, offline). OpenAI is a
+    # first-class alternative — swap by setting the env vars below.
+    embedding_provider: Literal["ollama", "openai"] = "ollama"
+    embedding_model: str = "nomic-embed-text"
+    embedding_dim: int = 768  # nomic-embed-text output dim
 
-    llm_provider: Literal["openai"] = "openai"
-    llm_model: str = "gpt-4o-mini"
+    llm_provider: Literal["ollama", "openai"] = "ollama"
+    llm_model: str = "llama3.2"
     llm_temperature: float = 0.0
     llm_max_tokens: int = 800
 
+    # Ollama runtime
+    ollama_url: str = "http://localhost:11434"
+
+    # OpenAI alternative — set only when EMBEDDING_PROVIDER/LLM_PROVIDER=openai
     openai_api_key: SecretStr | None = None
+
+    # Convenience: OpenAI-specific defaults used only when the OpenAI
+    # provider is selected. Kept here so switching providers is a single
+    # env-var change plus model-name override.
+    openai_embedding_model: str = "text-embedding-3-small"
+    openai_embedding_dim: int = 1536
+    openai_llm_model: str = "gpt-4o-mini"
 
     # ── Reranker (ADR-006) ───────────────────────────────────
     reranker_model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
@@ -143,10 +156,16 @@ class Settings(BaseSettings):
 
     # ── Derived helpers ──────────────────────────────────────
     def require_openai_key(self) -> str:
-        """Fail fast when a code path actually needs the key."""
+        """
+        Fail fast when a code path actually needs the OpenAI key.
+        Only called by the OpenAI provider factory branch — Ollama users
+        never hit this.
+        """
         if self.openai_api_key is None:
             raise RuntimeError(
-                "OPENAI_API_KEY is not set. Add it to .env or export it."
+                "OPENAI_API_KEY is not set. Required only when "
+                "EMBEDDING_PROVIDER=openai or LLM_PROVIDER=openai. "
+                "Add it to .env or switch providers to 'ollama'."
             )
         return self.openai_api_key.get_secret_value()
 
