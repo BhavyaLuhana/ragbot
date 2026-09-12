@@ -160,10 +160,12 @@ async def stream_answer(
         return
 
     prompt = build_prompt(query, chunks)
+    saw_any_token = False
 
     try:
         async for token in llm.stream(prompt, max_tokens=max_tokens):
             if token:
+                saw_any_token = True
                 yield _token_event(token)
     except ProviderError as exc:
         log.warning(
@@ -181,12 +183,24 @@ async def stream_answer(
         yield _done_event()
         return
 
-    # Emit citations from the top chunks (already reranked, already top-K).
     citations = [Citation.from_chunk(sc.chunk, score=sc.score) for sc in chunks]
     yield _citations_event(citations)
 
     if trace is not None:
         yield _trace_event(trace)
+
+    if not saw_any_token:
+        log.warning(
+            "generate_empty_stream",
+            chunks=len(chunks),
+            prompt_chars=len(prompt),
+            llm=llm.model_name,
+        )
+        yield _token_event(
+            "I wasn't able to generate an answer. Please try again."
+        )
+    else:
+        log.info("generate_stream_complete")
 
     yield _done_event()
 

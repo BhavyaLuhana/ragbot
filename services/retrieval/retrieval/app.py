@@ -179,11 +179,7 @@ def _metadata_filter_to_where(f: MetadataFilter | None) -> dict[str, Any] | None
         clauses.append({"page": {"$gte": f.page_gte}})
     if f.page_lte is not None:
         clauses.append({"page": {"$lte": f.page_lte}})
-    if f.section_contains is not None:
-        # Chroma doesn't support substring on metadata — we filter
-        # post-retrieval instead. But for parity we allow it via $eq on
-        # full section match. Documented limitation.
-        clauses.append({"section": {"$eq": f.section_contains}})
+
 
     if not clauses:
         return None
@@ -191,6 +187,27 @@ def _metadata_filter_to_where(f: MetadataFilter | None) -> dict[str, Any] | None
         return clauses[0]
     return {"$and": clauses}
 
+def _post_filter_section(
+    chunks: list[ScoredChunk],
+    needle: str | None,
+) -> list[ScoredChunk]:
+    """
+    Post-retrieval filter for `section_contains`.
+
+    Chroma's metadata predicates don't support substring matching, so we
+    apply this filter in Python on the candidate set (dense top-K +
+    sparse top-K fused = ~20-40 rows). Case-insensitive.
+
+    Returns the filtered list unchanged if `needle` is None or empty.
+    """
+    if not needle:
+        return chunks
+    needle_lower = needle.lower()
+    return [
+        sc
+        for sc in chunks
+        if needle_lower in (sc.chunk.metadata.section or "").lower()
+    ]
 
 async def _run_pipeline(
     req: RetrieveRequest,
@@ -236,6 +253,9 @@ async def _run_pipeline(
         k=settings.rrf_k,
         top_k=settings.fusion_top_k,
     )
+
+    if req.metadata_filter and req.metadata_filter.section_contains:
+        fused = _post_filter_section(fused, req.metadata_filter.section_contains)
 
     # ── Rerank ──────────────────────────────────────────────
     final_k = req.top_k if req.top_k is not None else settings.final_top_k

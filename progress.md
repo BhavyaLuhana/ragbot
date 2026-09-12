@@ -66,12 +66,6 @@ Next: ingestion service.
 - [x] Ollama embeddings: 36s cold, 1.08s warm — no latency problem
 - [x] Chroma 0.6.x compatibility fix (list_collections returns names)
 
-## 🚧 In Progress — Retrieval Service Batch 2 (files 6-9)
-- [ ] services/retrieval/retrieval/rerank.py
-- [ ] services/retrieval/retrieval/hyde.py
-- [ ] services/retrieval/retrieval/generate.py
-- [ ] services/retrieval/retrieval/app.py (with POST /reload stub)
-- [ ] services/retrieval/Dockerfile + .dockerignore
 
 ## ✅ Done (continued) — Retrieval Service Batch 1
 - [x] services/retrieval/pyproject.toml
@@ -94,20 +88,34 @@ Next: ingestion service.
 - [x] End-to-end: query → HyDE → dense+sparse → RRF → rerank → streamed answer + citations
 - [x] Verified: "What is the deployment policy?" returns correct, cited answer
 
-- [ ] services/chat/ — starting now
+## ✅ Done — CHAT SERVICE COMPLETE
+- [x] Verified: 2-turn conversation with recent_turns flowing to HyDE
+- [x] Defensive fallback patches applied (empty-stream → visible message)
+- [x] services/chat/pyproject.toml
+- [x] services/chat/chat/session.py (SessionStore with TTL eviction)
+- [x] services/chat/chat/orchestrator.py (relay + state)
+- [x] services/chat/chat/app.py (/chat SSE, /sessions/{id}, /health, DELETE)
+- [x] services/chat/Dockerfile + .dockerignore
+- [x] Verified: 2-turn conversation with recent_turns flowing to HyDE
 
-## ⏳ Pending — Chat Service
-- [ ] services/chat/pyproject.toml + Dockerfile + .dockerignore
-- [ ] services/chat/session.py
-- [ ] services/chat/orchestrator.py
-- [ ] services/chat/app.py
-- [ ] services/chat/tests/
+## 🚧 In Progress
+- [ ] docker-compose.yml
+- [ ] Makefile
+- [ ] evaluate.py (RAGAS)
+- [ ] README.md
 
-## ⏳ Pending — Frontend (JS)
-- [ ] Vite + React + JS + Tailwind scaffold
-- [ ] App.jsx, ChatWindow, MessageBubble, InputBox, Citations, TypingIndicator
-- [ ] lib/sse.js, lib/api.js, types/chat.js
-- [ ] .env (VITE_CHAT_URL)
+## ✅ Done — FRONTEND COMPLETE
+- [x] Vite scaffold with Tailwind v3.4
+- [x] src/lib/sse.js — SSE-over-POST parser
+- [x] src/components/* — ChatWindow, MessageBubble, Citations, InputBox, TypingIndicator
+- [x] src/App.jsx — session_id ref, streaming message updates
+- [x] src/types/chat.js — JSDoc typedefs mirroring Pydantic
+- [x] Verified: streaming tokens, citations render, multi-turn context
+
+## 🐛 Fixed
+- [x] retrieve/generate.py: fallback token was firing on EVERY success
+      due to a bad paste (indentation collapsed `if not saw_any_token:`
+      under `if trace is not None:`). Now correctly guarded.
 
 ## ⏳ Pending — Infra & Tooling
 - [ ] docker-compose.yml
